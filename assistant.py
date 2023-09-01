@@ -399,6 +399,9 @@ class AddressBook(UserDict):
         @return: list of matching records
         """
         result = []
+        if not phrase:
+            return result
+
         for rec_id, record in self.data.items():
 
             user_name = rec_id
