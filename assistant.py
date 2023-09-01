@@ -1,5 +1,9 @@
 from collections import UserDict
 from datetime import datetime, date
+from faker import Faker
+import json
+import pickle
+from random import randint, choice
 
 
 class Field:
@@ -46,7 +50,12 @@ class Name(Field):
             raise TypeError('Name must be string')
         if len(name) < 3:
             raise ValueError('Name is too short. Must be minimum 3 characters')
-        if not name.replace(' ', '').replace("'", '').isalnum():
+        if not (name
+                .replace(' ', '')
+                .replace("'", '')
+                .replace('-', '')
+                .isalnum()):
+            print(name)
             raise ValueError('Name contains not allowed signs')
         self.__value = name
 
@@ -239,6 +248,8 @@ class AddressBook(UserDict):
     Class representing address book. It is a dictionary with name of the contact as key
     and Record representing this contact as value
     """
+    BINARY_FILE = 'address_book.bin'
+    JSON_FILE = 'address_book.json'
 
     def __init__(self):
         super().__init__()
@@ -276,10 +287,6 @@ class AddressBook(UserDict):
         result.append(h_line)
         return ''.join(result)
 
-    def add_record(self, record: Record):
-        """adds record obj to address book"""
-        self.data[record.name.value] = record
-
     def __get_records_strings(self) -> list[str]:
         """creates and returns list with numerated string representation of all Records"""
         i, lines = 1, []
@@ -288,6 +295,128 @@ class AddressBook(UserDict):
             i += 1
         return lines
 
+    def add_record(self, record: Record):
+        """adds Record object to address book"""
+        self.data[record.name.value] = record
+
+    def add_fake_records(self, quantity: int):
+        """
+        fills current address_book with given 'quantity' of fake records
+        """
+        fake = Faker('uk_UA')
+
+        # populating address_book with fake names and birthdays
+        for _ in range(quantity):
+            name_str = fake.name()
+            while 'пан' in name_str:
+                name_str = fake.name()
+            name = Name(name_str)
+            birth = None
+            if randint(1, 10) < 8:  # not every but only 7 of 10 records will be with birthdays
+                birth_date = fake.date_of_birth(minimum_age=15)
+                birth = Birthday(birth_date)
+
+            rec = Record(name, birthday=birth)
+            self.add_record(rec)
+
+        records = list(self.data.values())
+
+        # populate records with fake phones. Some of the records will have no phones and some will have a few phones.
+        for _ in range(quantity * 3 // 2):
+            phone_str = fake.phone_number()
+            phone_number = Phone(phone_str)
+            choice(records).add_phone(phone_number)
+
+    def json_dump(self, filename: str = '') -> None:
+        """
+        saves current AddressBook object in json file with given 'filename'.
+        :param filename: str. Optional (if not given then 'self.JSON_FILE' is used)
+        :return: None
+        """
+        filename = filename or self.JSON_FILE
+
+        list_to_save = []
+        for rec_id, record in self.data.items():
+            list_to_save.append({'name': record.name.value,
+                                 'birthday': record.birthday.value.strftime('%d.%m.%Y') if record.birthday else None,
+                                 'phones': [str(phone) for phone in record.phones]})
+
+        with open(filename, 'w', encoding='utf-8') as fh:
+            json.dump(list_to_save, fh, ensure_ascii=False, indent=4)
+
+    @classmethod
+    def json_load(cls, filename: str = ''):
+        """
+        loads and returns AddressBook object from json file with given 'filename'.
+        :param filename: str. Optional (if not given then 'self.JSON_FILE' is used)
+        :return: restored AddressBook object
+        @rtype: AddressBook
+        """
+        filename = filename or cls.JSON_FILE
+        with open(filename, 'r', encoding='utf-8') as fh:
+            unpacked = json.load(fh)
+        address_book = AddressBook()
+        for user in unpacked:
+            user_birthday = None
+            if user['birthday']:
+                user_birthday = Birthday(datetime.strptime(user['birthday'], '%d.%m.%Y'))
+            record = Record(name=Name(user['name']), birthday=user_birthday)
+            for phone_str in user['phones']:
+                record.add_phone(Phone(phone_str))
+            address_book.add_record(record)
+        return address_book
+
+    def pickle_dump(self, filename: str = '') -> None:
+        """
+        saves current AddressBook object in binary file with given 'filename'.
+        :param filename: str. Optional (if not given then 'self.BINARY_FILE' is used)
+        :return: None
+        """
+        filename = filename or self.BINARY_FILE
+        with open(filename, 'wb') as fh:
+            pickle.dump(self, fh)
+        pass
+
+    @classmethod
+    def pickle_load(cls, filename: str = ''):
+        """
+        loads and returns AddressBook object from binary file with given 'filename'.
+        :param filename: str. Optional (if not given then 'self.BINARY_FILE' is used)
+        :return: restored AddressBook object
+        @rtype: AddressBook
+        """
+        filename = filename or cls.BINARY_FILE
+        with open(filename, 'rb') as fh:
+            unpacked = pickle.load(fh)
+        return unpacked
+
+    def search(self, phrase: str, ignore_case=True) -> list[Record]:
+        """
+        searches for records in fields of which there is
+        match with given 'phrase'.
+        @param phrase: str that we are looking for
+        @param ignore_case: bool. If True then search ignores case of phrase and values
+        @return: list of matching records
+        """
+        result = []
+        for rec_id, record in self.data.items():
+
+            user_name = rec_id
+            user_birthday = str(record.birthday)
+            user_phones = '|'.join(phone.value for phone in record.phones)
+
+            if ignore_case:
+                user_name = user_name.lower()
+                user_birthday = user_birthday.lower()
+                user_phones = user_phones.lower()
+                phrase = phrase.lower()
+
+            if (phrase in user_name
+                    or phrase in user_birthday
+                    or phrase in user_phones):
+                result.append(record)
+        return result
+
 
 if __name__ == '__main__':
     # ALL THE TESTS ARE IN SEPARATE FILES
@@ -295,8 +424,14 @@ if __name__ == '__main__':
     from Tests.test_days_to_birthday import test as test2
     from Tests.test_str_and_repr_methods import test as test3
     from Tests.test_filling_address_book_with_records import test as test4
+    from Tests.test_pickle_dump_and_pickle_load_functions import test as test5
+    from Tests.test_json_dump_and_json_load_functions import test as test6
+    from Tests.test_search_method import test as test7
 
     test4()
     test1()
     test2()
     test3()
+    test5()
+    test6()
+    test7()
