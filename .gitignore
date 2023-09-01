@@ -1,3 +1,5 @@
+address_book.bin
+address_book.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
