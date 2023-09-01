@@ -13,8 +13,8 @@ def test():
     assert isinstance(ab['Bill'].phones, list)
     assert isinstance(ab['Bill'].phones[0], Phone)
     assert ab['Bill'].phones[0].value == '1234567890'
-
-    print('Test 1 ..... passed')
+    print()
+    print('Test structure of classes and their fields ..... passed')
 
 
 if __name__ == '__main__':
